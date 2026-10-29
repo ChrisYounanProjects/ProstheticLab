@@ -9,6 +9,7 @@ not clinical performance claims or quotes for real prostheses.
 
 from __future__ import annotations
 
+import json
 import math
 import streamlit as st
 import streamlit.components.v1 as components
@@ -191,132 +192,194 @@ def clamp_score(value: float) -> int:
     return int(max(5, min(99, round(value))))
 
 
-def build_hand_svg(grip_pattern: str, drive_name: str, joint_name: str, power: int) -> str:
-    """Create a small SVG illustration whose finger pose changes by grip choice."""
-    poses = {
-        "open": {
-            "index": [(133, 202), (127, 164), (126, 123), (130, 91)],
-            "middle": [(165, 192), (163, 147), (164, 103), (168, 69)],
-            "ring": [(198, 192), (203, 151), (210, 115), (214, 85)],
-            "pinky": [(226, 204), (239, 171), (249, 143), (255, 119)],
-            "thumb": [(145, 258), (116, 246), (104, 222), (119, 204)],
-        },
-        "power": {
-            "index": [(134, 202), (123, 174), (139, 171), (157, 189)],
-            "middle": [(165, 192), (155, 162), (174, 158), (191, 180)],
-            "ring": [(198, 194), (192, 166), (211, 168), (226, 190)],
-            "pinky": [(226, 204), (231, 185), (247, 191), (251, 208)],
-            "thumb": [(145, 258), (115, 247), (132, 226), (160, 221)],
-        },
-        "pinch": {
-            "index": [(134, 202), (127, 165), (139, 137), (164, 126)],
-            "middle": [(165, 192), (157, 167), (177, 166), (193, 185)],
-            "ring": [(198, 194), (194, 171), (212, 176), (225, 195)],
-            "pinky": [(226, 204), (232, 188), (247, 198), (250, 211)],
-            "thumb": [(145, 258), (117, 246), (139, 222), (166, 134)],
-        },
-        "tripod": {
-            "index": [(134, 202), (127, 166), (137, 139), (159, 130)],
-            "middle": [(165, 192), (159, 157), (173, 133), (195, 130)],
-            "ring": [(198, 194), (193, 170), (211, 176), (225, 195)],
-            "pinky": [(226, 204), (232, 188), (247, 198), (250, 211)],
-            "thumb": [(145, 258), (117, 246), (139, 221), (166, 136)],
-        },
-        "hook": {
-            "index": [(134, 202), (124, 180), (143, 188), (153, 208)],
-            "middle": [(165, 192), (155, 169), (176, 180), (190, 203)],
-            "ring": [(198, 194), (192, 173), (214, 187), (224, 207)],
-            "pinky": [(226, 204), (231, 188), (248, 202), (249, 218)],
-            "thumb": [(145, 258), (117, 246), (112, 223), (126, 209)],
-        },
-    }
-    pose = poses.get(grip_pattern, poses["open"])
+HAND3D_HTML = r"""<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:'Manrope',Arial,sans-serif}
+#v{position:absolute;inset:0;border:1px solid #25364d;border-radius:20px;overflow:hidden;background:radial-gradient(circle at 50% 38%,#1c3453 0%,#0d1829 60%,#080e18 100%)}
+canvas{display:block;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}
+.hint{position:absolute;top:12px;left:14px;font:500 10px 'DM Mono',monospace;letter-spacing:.14em;color:#7f97b4;pointer-events:none}
+.bar{position:absolute;bottom:12px;left:12px;display:flex;gap:6px}
+.bar button{background:#12233a;color:#cfe0f5;border:1px solid #2c4262;border-radius:9px;padding:6px 11px;font:700 11px 'Manrope',Arial;cursor:pointer}
+.bar button:hover{border-color:#5de0d0}.bar button.on{background:#5de0d0;color:#06151d;border-color:#5de0d0}
+.tag{position:absolute;left:0;top:0;pointer-events:none;font:500 10px 'DM Mono',monospace;letter-spacing:.08em;color:#e8f1ff;white-space:nowrap;
+background:rgba(10,20,34,.82);border:1px solid var(--c);border-radius:8px;padding:4px 8px 4px 8px}
+.tag b{color:var(--c);font-weight:500;margin-right:6px}
+</style></head><body><div id="v">
+<div class="hint">DRAG ROTATE · SCROLL ZOOM · RIGHT-DRAG PAN</div>
+<div class="bar"><button id="bx">X-ray</button><button id="bs" class="on">Auto-spin</button><button id="bz">+</button><button id="bo">&minus;</button><button id="br">Reset</button></div>
+<div class="tag" id="t1"></div><div class="tag" id="t2"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const CFG=__CFG__, V3=THREE.Vector3, rad=d=>d*Math.PI/180;
+const ST=(function(){try{return window.parent.__pl=window.parent.__pl||{}}catch(e){return {}}})();
+const root=document.getElementById('v');
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+root.insertBefore(renderer.domElement,root.firstChild);
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(32,1,.1,100);
+// Studio environment for believable metal reflections
+const pm=new THREE.PMREMGenerator(renderer),es=new THREE.Scene();
+es.add(new THREE.Mesh(new THREE.SphereGeometry(30,32,16),new THREE.MeshBasicMaterial({color:0x22344d,side:THREE.BackSide})));
+[[0,14,8,16,3,0xffffff,5],[-14,3,-6,3,12,0x5de0d0,3],[14,4,5,3,10,0x78a7ff,3],[0,-6,10,14,2,0xffe2b0,1.5]].forEach(b=>{
+ const m=new THREE.Mesh(new THREE.BoxGeometry(b[3],b[4],.5),new THREE.MeshBasicMaterial({color:new THREE.Color(b[5]).multiplyScalar(b[6])}));m.position.set(b[0],b[1],b[2]);m.lookAt(0,0,0);es.add(m)});
+scene.environment=pm.fromScene(es,.03).texture;
+scene.add(new THREE.HemisphereLight(0xbfd9ff,0x1a2233,.35));
+const key=new THREE.DirectionalLight(0xffffff,1.1);key.position.set(4,7,9);scene.add(key);
+const rim=new THREE.DirectionalLight(0x5de0d0,.9);rim.position.set(-7,3,-6);scene.add(rim);
 
-    def finger(name: str, pts: list[tuple[int, int]], width: int) -> str:
-        p0, p1, p2, p3 = pts
-        # Outer structural segments and a lighter inner highlight create a machined look.
-        d = f"M {p0[0]} {p0[1]} L {p1[0]} {p1[1]} L {p2[0]} {p2[1]} L {p3[0]} {p3[1]}"
-        joints = "".join(
-            f'<circle cx="{x}" cy="{y}" r="{max(5, width // 2 - 2)}" fill="#162436" stroke="#9cadc1" stroke-width="2"/>'
-            f'<circle cx="{x}" cy="{y}" r="2.2" fill="#5de0d0"/>'
-            for x, y in (p1, p2)
-        )
-        return (
-            f'<path d="{d}" fill="none" stroke="#0a101a" stroke-width="{width + 7}" stroke-linecap="round" stroke-linejoin="round"/>'
-            f'<path d="{d}" fill="none" stroke="url(#metal)" stroke-width="{width}" stroke-linecap="round" stroke-linejoin="round"/>'
-            f'<path d="M {p0[0]} {p0[1]} L {p1[0]} {p1[1]} L {p2[0]} {p2[1]} L {p3[0]} {p3[1]}" fill="none" stroke="#dce6f2" stroke-opacity=".45" stroke-width="2" stroke-linecap="round"/>'
-            f'{joints}<circle cx="{p3[0]}" cy="{p3[1]}" r="8" fill="#111927" stroke="#74889f" stroke-width="2"/>'
-            f'<circle cx="{p3[0]}" cy="{p3[1]}" r="3" fill="#5de0d0"/>'
-        )
+const DC={'Tendon-driven':0xf8c66b,'Direct-motor':0x78a7ff,'Underactuated':0x5de0d0}[CFG.drive];
+const JC=CFG.joint==='Compliant joint'?0xf8c66b:0x5de0d0;
+const mat=(c,m,r,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,metalness:m,roughness:r},o||{}));
+const M={shell:mat(0x3b475a,.75,.34),metal:mat(0xb9c4d3,.92,.24),dark:mat(0x1b222d,.6,.45),pad:mat(0x10151c,0,.85),plate:mat(0x56657b,.85,.3),
+ cyan:mat(0x5de0d0,.2,.4,{emissive:0x5de0d0,emissiveIntensity:.3+CFG.power*.12}),jc:mat(JC,.3,.45,{emissive:JC,emissiveIntensity:.5}),
+ rubber:mat(0xc99a3c,0,.7),drive:mat(DC,.8,.3),amber:mat(0xf8c66b,.3,.4,{emissive:0xf8c66b,emissiveIntensity:.35}),pcb:mat(0x0d3b2e,.4,.5)};
+const shellMats=[M.shell,M.pad,M.plate];
+const mesh=(g,m,x,y,z)=>{const o=new THREE.Mesh(g,m);o.position.set(x||0,y||0,z||0);return o};
+const hand=new THREE.Group();scene.add(hand);
 
-    fingers_svg = "".join([
-        finger("index", pose["index"], 18),
-        finger("middle", pose["middle"], 20),
-        finger("ring", pose["ring"], 18),
-        finger("pinky", pose["pinky"], 15),
-        finger("thumb", pose["thumb"], 19),
-    ])
+function rrect(w,h,r){const s=new THREE.Shape(),x=-w/2,y=-h/2;s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s}
+// --- Palm, wrist, socket
+const pg=new THREE.ExtrudeGeometry(rrect(1.7,1.9,.4),{depth:.6,bevelEnabled:true,bevelThickness:.15,bevelSize:.15,bevelSegments:6,curveSegments:14});pg.translate(0,0,-.3);
+hand.add(mesh(pg,M.shell));
+hand.add(mesh(new THREE.BoxGeometry(1.35,1.5,.05),M.plate,0,0,-.47));
+hand.add(mesh(new THREE.BoxGeometry(1.0,.045,.03),M.cyan,0,.45,-.5));
+hand.add(mesh(new THREE.BoxGeometry(1.0,.045,.03),M.cyan,0,.3,-.5));
+hand.add(mesh(new THREE.BoxGeometry(1.25,.95,.08),M.pad,0,-.1,.46));
+const cy=(r1,r2,h,m,y)=>mesh(new THREE.CylinderGeometry(r1,r2,h,32),m,0,y,0);
+hand.add(cy(.62,.55,.7,M.metal,-1.45));
+[-1.2,-1.5,-1.75].forEach(y=>{const t=mesh(new THREE.TorusGeometry(.6,.04,10,40),M.dark,0,y,0);t.rotation.x=Math.PI/2;hand.add(t)});
+hand.add(cy(.8,.74,1.2,M.shell,-2.4));
+const ring=mesh(new THREE.TorusGeometry(.78,.035,10,48),M.cyan,0,-1.85,0);ring.rotation.x=Math.PI/2;hand.add(ring);
+hand.add(cy(.7,.7,.25,M.dark,-3.05));
 
-    # Style details vary slightly by selected mechanism and joint type.
-    wire_color = "#f8c66b" if drive_name == "Tendon-driven" else ("#78a7ff" if drive_name == "Direct-motor" else "#5de0d0")
-    joint_detail = "#f8c66b" if joint_name == "Compliant joint" else "#5de0d0"
-    actuator_count = 2 if drive_name == "Underactuated" else (4 if drive_name == "Tendon-driven" else 5)
-    actuator_blocks = "".join(
-        f'<rect x="{143 + i * 19}" y="258" width="13" height="28" rx="4" fill="#273a50" stroke="{wire_color}" stroke-width="1.5"/>'
-        f'<rect x="{146 + i * 19}" y="263" width="7" height="18" rx="2" fill="{wire_color}" fill-opacity=".8"/>'
-        for i in range(actuator_count)
-    )
-    power_len = 30 + power * 2
-    return f'''<!doctype html><html><head><style>
-      *{{box-sizing:border-box}} body{{margin:0;background:transparent;font-family:Arial,sans-serif;}}
-      .wrap{{width:100%;max-width:550px;margin:0 auto;}}
-      svg{{width:100%;height:auto;display:block;}}
-    </style></head><body><div class="wrap"><svg viewBox="0 0 380 430" role="img" aria-label="Illustration of a mechanical prosthetic hand in the selected grip pose">
-      <defs>
-        <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dbe5f1"/><stop offset=".48" stop-color="#7f91a8"/><stop offset="1" stop-color="#42556d"/></linearGradient>
-        <linearGradient id="palm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#73879e"/><stop offset=".48" stop-color="#34465b"/><stop offset="1" stop-color="#1e2c3e"/></linearGradient>
-        <linearGradient id="wrist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c6178"/><stop offset="1" stop-color="#1a293a"/></linearGradient>
-        <pattern id="grid" width="23" height="23" patternUnits="userSpaceOnUse"><path d="M23 0H0V23" fill="none" stroke="#243650" stroke-width=".6"/></pattern>
-      </defs>
-      <rect x="3" y="3" width="374" height="424" rx="22" fill="#0b1422" stroke="#24364d"/>
-      <rect x="3" y="3" width="374" height="424" rx="22" fill="url(#grid)" opacity=".7"/>
-      <circle cx="188" cy="194" r="143" fill="#16263b" opacity=".35"/>
-      <g>{fingers_svg}</g>
-      <!-- Palm shell -->
-      <path d="M124 201 C116 217 117 239 125 258 L140 295 Q147 313 167 319 L240 319 Q266 313 275 291 L287 254 Q293 230 280 210 L259 188 Q248 178 235 187 L220 200 L191 188 L161 187 Q140 183 124 201Z" fill="#0a111c" stroke="#0a111c" stroke-width="10"/>
-      <path d="M124 201 C116 217 117 239 125 258 L140 295 Q147 313 167 319 L240 319 Q266 313 275 291 L287 254 Q293 230 280 210 L259 188 Q248 178 235 187 L220 200 L191 188 L161 187 Q140 183 124 201Z" fill="url(#palm)" stroke="#a8b8ca" stroke-width="2"/>
-      <path d="M143 218 Q164 204 185 214 L193 292 L164 301 Q148 291 143 272Z" fill="#122033" stroke="#6f849d" stroke-width="1.5"/>
-      <path d="M198 212 L246 211 Q263 218 265 237 L255 285 Q251 299 237 301 L206 299Z" fill="#15273b" stroke="#72869d" stroke-width="1.5"/>
-      <!-- Electronics and actuators -->
-      <rect x="151" y="224" width="88" height="20" rx="4" fill="#0b1421" stroke="{wire_color}" stroke-width="1.5"/>
-      <path d="M157 231H178L184 237H204L211 229H231" stroke="{wire_color}" stroke-width="2" fill="none"/>
-      <circle cx="178" cy="231" r="3" fill="{wire_color}"/><circle cx="211" cy="229" r="3" fill="{wire_color}"/>
-      {actuator_blocks}
-      <path d="M150 248 C168 244 187 245 202 252 S235 254 249 247" fill="none" stroke="{wire_color}" stroke-width="2.2" stroke-dasharray="4 4"/>
-      <path d="M148 270 L158 270 L163 278 L177 278 L182 268 L197 268" fill="none" stroke="#9fb0c5" stroke-width="2"/>
-      <rect x="184" y="274" width="47" height="13" rx="4" fill="#273b50" stroke="#91a3b9" stroke-width="1.2"/>
-      <rect x="190" y="278" width="26" height="5" rx="2" fill="{wire_color}"/>
-      <circle cx="240" cy="280" r="5" fill="#0b1422" stroke="{joint_detail}" stroke-width="2"/>
-      <circle cx="240" cy="280" r="1.7" fill="{joint_detail}"/>
-      <!-- Wrist connector -->
-      <path d="M163 314 L158 337 Q157 347 169 351 L234 351 Q246 347 244 336 L239 314Z" fill="url(#wrist)" stroke="#91a4b9" stroke-width="2"/>
-      <path d="M171 326H231M169 335H233M172 344H230" stroke="#0b1422" stroke-width="3"/>
-      <rect x="178" y="354" width="47" height="33" rx="7" fill="#253950" stroke="#8ba0b8" stroke-width="2"/>
-      <rect x="188" y="362" width="27" height="16" rx="3" fill="#0c1726" stroke="{wire_color}" stroke-width="1.5"/>
-      <path d="M193 370H210" stroke="{wire_color}" stroke-width="2"/>
-      <circle cx="188" cy="395" r="3" fill="#5de0d0"/><circle cx="215" cy="395" r="3" fill="#5de0d0"/>
-      <!-- Callouts -->
-      <path d="M248 235 L292 221 L322 221" stroke="{wire_color}" stroke-width="1.4" fill="none"/>
-      <circle cx="248" cy="235" r="3" fill="{wire_color}"/>
-      <text x="319" y="211" fill="#a8b8cd" font-size="8" text-anchor="end" letter-spacing="1.3">CONTROL</text>
-      <text x="319" y="233" fill="#f0f5ff" font-size="11" text-anchor="end">{drive_name.upper()}</text>
-      <path d="M241 282 L283 301 L321 301" stroke="{joint_detail}" stroke-width="1.4" fill="none"/>
-      <circle cx="241" cy="282" r="3" fill="{joint_detail}"/>
-      <text x="320" y="292" fill="#a8b8cd" font-size="8" text-anchor="end" letter-spacing="1.1">JOINT SYSTEM</text>
-      <text x="320" y="313" fill="#f0f5ff" font-size="10" text-anchor="end">{joint_name.upper()}</text>
-      <text x="24" y="398" fill="#7c91aa" font-size="9" letter-spacing="1.4">PROSTHETICLAB / CONCEPT MODEL</text>
-      <text x="350" y="398" fill="#5de0d0" font-size="10" text-anchor="end">PWR {power:02d}/10</text>
-    </svg></div></body></html>'''
+// --- Internals: motors, PCB, battery
+const nm=CFG.motors,motors=[];
+for(let i=0;i<nm;i++){const x=nm===1?0:-.62+1.24*i/(nm-1);
+ const g=new THREE.Group();g.position.set(x,.2,-.02);
+ g.add(mesh(new THREE.CylinderGeometry(.13,.13,.62,20),M.drive));
+ g.add(mesh(new THREE.CylinderGeometry(.07,.07,.2,12),M.metal,0,-.4,0));
+ g.add(mesh(new THREE.CylinderGeometry(.15,.15,.08,20),M.dark,0,.2,0));
+ hand.add(g);motors.push(g)}
+hand.add(mesh(new THREE.BoxGeometry(1.35,.45,.05),M.pcb,0,-.6,-.2));
+for(let i=0;i<4;i++)hand.add(mesh(new THREE.BoxGeometry(.07,.04,.03),M.cyan,-.45+.3*i,-.52,-.17));
+hand.add(mesh(new THREE.BoxGeometry(.95,.4,.3),M.dark,0,-.6,.08));
+hand.add(mesh(new THREE.BoxGeometry(.8,.05,.32),M.amber,0,-.6,.08));
+
+// --- Joint + segment builders
+function joint(r){const g=new THREE.Group();
+ if(CFG.joint==='Compliant joint'){g.add(mesh(new THREE.SphereGeometry(r*.8,18,14),M.rubber));
+  [-.14,0,.14].forEach(k=>{const t=mesh(new THREE.TorusGeometry(r*.85,r*.11,10,28),M.rubber,0,r*k*2,0);t.rotation.x=Math.PI/2;g.add(t)})}
+ else{g.add(mesh(new THREE.SphereGeometry(r*.97,18,14),M.dark));
+  const pin=mesh(new THREE.CylinderGeometry(r*.36,r*.36,r*2.15,18),M.jc);pin.rotation.z=Math.PI/2;g.add(pin);
+  if(CFG.joint==='Multi-link')[-1,1].forEach(s=>{g.add(mesh(new THREE.BoxGeometry(r*.2,r*1.9,r*.55),M.metal,s*r*1.0,r*.3,0));
+   g.add(mesh(new THREE.CylinderGeometry(r*.12,r*.12,r*.3,10),M.jc,s*r*1.05,r*.95,0)).rotation.z=Math.PI/2})}
+ return g}
+function seg(L,r,last){const g=new THREE.Group();
+ g.add(mesh(new THREE.CylinderGeometry(r*.88,r,L,24),last?M.shell:M.metal,0,L/2,0));
+ g.add(mesh(new THREE.BoxGeometry(r*1.25,L*.76,r*.5),M.pad,0,L/2,r*.78));
+ g.add(mesh(new THREE.BoxGeometry(r*.9,L*.6,r*.2),M.plate,0,L/2,-r*.88));
+ if(last){g.add(mesh(new THREE.SphereGeometry(r*.88,20,14),M.shell,0,L,0));
+  const p=mesh(new THREE.SphereGeometry(r*.66,16,12),M.pad,0,L*.8,r*.78);p.scale.set(1,1.25,.6);g.add(p);
+  g.add(mesh(new THREE.BoxGeometry(r*.4,.03,.03),M.cyan,0,L*.45,-r*1.0))}
+ return g}
+const FD=[{x:-.66,y:1.08,L:[.85,.55,.42],r:.19},{x:-.22,y:1.1,L:[.95,.62,.45],r:.2},{x:.22,y:1.08,L:[.88,.58,.43],r:.19},{x:.64,y:.98,L:[.68,.42,.36],r:.16}];
+const fingers=FD.map(d=>{const mcp=new THREE.Group();mcp.position.set(d.x,d.y,0);hand.add(mcp);
+ mcp.add(joint(d.r),seg(d.L[0],d.r));
+ const pip=new THREE.Group();pip.position.y=d.L[0];mcp.add(pip);pip.add(joint(d.r*.92),seg(d.L[1],d.r*.92));
+ const dip=new THREE.Group();dip.position.y=d.L[1];pip.add(dip);dip.add(joint(d.r*.85),seg(d.L[2],d.r*.85,true));
+ return {d,mcp,pip,dip}});
+const th=(function(){const cmc=new THREE.Group();cmc.position.set(-.95,-.55,.15);cmc.rotation.order='YXZ';hand.add(cmc);
+ cmc.add(joint(.24),seg(.75,.24));
+ const mp=new THREE.Group();mp.position.y=.75;cmc.add(mp);mp.add(joint(.21),seg(.55,.21));
+ const ip=new THREE.Group();ip.position.y=.55;mp.add(ip);ip.add(joint(.19),seg(.45,.19,true));
+ return {cmc,mp,ip}})();
+const fPad=f=>f.dip.localToWorld(new V3(0,f.d.L[2]*.78,f.d.r*.85*.8));
+const tPad=()=>th.ip.localToWorld(new V3(0,.45*.78,.19*.8));
+function apply(a){fingers.forEach((f,i)=>{f.mcp.rotation.x=rad(a[3*i]);f.pip.rotation.x=rad(a[3*i+1]);f.dip.rotation.x=rad(a[3*i+2])});
+ th.cmc.rotation.set(rad(a[13]),rad(a[14]),rad(a[12]),'YXZ');th.mp.rotation.x=rad(a[15]);th.ip.rotation.x=rad(a[16])}
+
+// --- Grip poses: [index,middle,ring,pinky]x[mcp,pip,dip], thumb [abduct,flex,oppose,mp,ip]
+const P={open:[4,2,2,4,2,2,4,2,2,4,2,2,35,0,0,5,5],
+ power:[60,75,55,62,78,55,64,80,52,66,80,50,20,25,55,25,25],
+ hook:[8,100,65,8,102,65,8,104,62,8,104,60,35,0,0,5,5],
+ pinch:[38,48,28,55,75,45,60,80,45,65,85,45,0,0,0,0,0],
+ tripod:[38,48,28,42,52,30,60,80,45,65,85,45,0,0,0,0,0]};
+const contact={};
+function solve(name,idx){const p=P[name];apply(p);hand.updateMatrixWorld(true);
+ const tg=new V3();idx.forEach(i=>tg.add(fPad(fingers[i])));tg.multiplyScalar(1/idx.length);
+ const t=[30,20,50,20,20],lo=[0,-10,0,0,0],hi=[70,60,90,70,70],st=[30,30,30,30,30];
+ const cost=()=>{apply(p.slice(0,12).concat(t));hand.updateMatrixWorld(true);return tPad().distanceTo(tg)};
+ let best=cost();
+ for(let it=0;it<300;it++){let imp=false;
+  for(let k=0;k<5;k++)for(const s of[1,-1]){const o=t[k];t[k]=Math.max(lo[k],Math.min(hi[k],o+s*st[k]));const c=cost();if(c<best-1e-4){best=c;imp=true}else t[k]=o}
+  if(!imp){for(let k=0;k<5;k++)st[k]*=.6;if(st[0]<.05)break}}
+ for(let k=0;k<5;k++)p[12+k]=t[k];contact[name]=tg}
+solve('pinch',[0]);solve('tripod',[0,1]);
+const ball=mesh(new THREE.SphereGeometry(.17,24,18),M.amber);scene.add(ball);
+const pen=mesh(new THREE.CylinderGeometry(.07,.07,2.6,16),M.amber);pen.rotation.set(rad(15),0,rad(78));scene.add(pen);
+ball.visible=pen.visible=false;
+const target=P[CFG.grip]||P.open;
+let cur=(ST.pose||P.open).slice();apply(cur);
+if(CFG.grip==='pinch'){ball.visible=true;ball.position.copy(contact.pinch)}
+if(CFG.grip==='tripod'){pen.visible=true;pen.position.copy(contact.tripod)}
+
+// --- Tendon routing (X-ray)
+const lines=fingers.map((f,i)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(15),3));
+ const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:DC}));l.frustumCulled=false;l.visible=false;scene.add(l);
+ return {l,f,m:motors[Math.min(nm-1,Math.floor(i*nm/4))]}});
+function updLines(){lines.forEach(o=>{const f=o.f,r=f.d.r,a=o.l.geometry.attributes.position.array;
+ const pts=[new V3(o.m.position.x,-.2,.1),f.mcp.localToWorld(new V3(0,0,r*1.12)),f.pip.localToWorld(new V3(0,0,r*1.05)),f.dip.localToWorld(new V3(0,0,r*.95)),f.dip.localToWorld(new V3(0,f.d.L[2]*.8,r*.95))];
+ pts.forEach((p,i)=>{a[3*i]=p.x;a[3*i+1]=p.y;a[3*i+2]=p.z});o.l.geometry.attributes.position.needsUpdate=true})}
+
+// --- Floor
+const grid=new THREE.GridHelper(14,28,0x5de0d0,0x24405c);grid.position.y=-3.3;grid.material.transparent=true;grid.material.opacity=.35;scene.add(grid);
+
+// --- Camera orbit (custom: drag rotate, wheel zoom, right-drag pan)
+const C=ST.cam||{th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3,spin:true,xray:false};ST.cam=C;
+const def={th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3};
+function cam(){const s=Math.sin(C.ph);camera.position.set(C.tx+C.d*s*Math.sin(C.th),C.ty+C.d*Math.cos(C.ph),C.tz+C.d*s*Math.cos(C.th));camera.lookAt(C.tx,C.ty,C.tz)}
+const el=renderer.domElement;let last=null,drag=false;
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);last=[e.clientX,e.clientY];drag=true;C.spin=false;sync()});
+el.addEventListener('pointerup',e=>{drag=false});
+el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];
+ if(e.buttons&2||e.shiftKey){const k=C.d*.0016,rt=new V3().setFromMatrixColumn(camera.matrix,0),up=new V3().setFromMatrixColumn(camera.matrix,1);
+  C.tx+=(-rt.x*dx+up.x*dy)*k;C.ty+=(-rt.y*dx+up.y*dy)*k;C.tz+=(-rt.z*dx+up.z*dy)*k}
+ else{C.th-=dx*.009;C.ph=Math.max(.15,Math.min(Math.PI-.15,C.ph-dy*.009))}});
+el.addEventListener('wheel',e=>{e.preventDefault();C.d=Math.max(4,Math.min(20,C.d*Math.exp(e.deltaY*.0012)))},{passive:false});
+const $=id=>document.getElementById(id);
+function sync(){$('bs').classList.toggle('on',C.spin);$('bx').classList.toggle('on',C.xray);setX()}
+function setX(){const o=C.xray?.16:1;shellMats.forEach(m=>{m.transparent=C.xray;m.opacity=o;m.depthWrite=!C.xray;m.needsUpdate=true});lines.forEach(q=>q.l.visible=C.xray)}
+$('bx').onclick=()=>{C.xray=!C.xray;sync()};$('bs').onclick=()=>{C.spin=!C.spin;sync()};
+$('bz').onclick=()=>C.d=Math.max(4,C.d*.85);$('bo').onclick=()=>C.d=Math.min(20,C.d*1.18);
+$('br').onclick=()=>{Object.assign(C,def);C.spin=true;sync()};sync();
+
+// --- Callout tags
+const T1=$('t1'),T2=$('t2');
+T1.style.setProperty('--c','#'+DC.toString(16).padStart(6,'0'));T1.innerHTML='<b>ACTUATION</b>'+CFG.drive.toUpperCase();
+T2.style.setProperty('--c','#'+JC.toString(16).padStart(6,'0'));T2.innerHTML='<b>JOINT</b>'+CFG.joint.toUpperCase();
+function place(t,p,dx,dy,w,h){const v=p.clone().project(camera);t.style.transform='translate('+Math.round((v.x*.5+.5)*w+dx)+'px,'+Math.round((-v.y*.5+.5)*h+dy)+'px)'}
+
+function resize(){const w=root.clientWidth,h=root.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe(root);resize();
+(function loop(){requestAnimationFrame(loop);
+ for(let i=0;i<17;i++)cur[i]+=(target[i]-cur[i])*.12;apply(cur);ST.pose=cur.slice();
+ if(C.spin&&!drag)C.th+=.004;cam();camera.updateMatrixWorld();
+ if(C.xray)updLines();
+ const w=root.clientWidth,h=root.clientHeight;
+ place(T1,new V3(motors[motors.length-1].position.x+.15,.2,0),30,-8,w,h);
+ place(T2,fingers[0].pip.localToWorld(new V3(0,0,0)),-150,-30,w,h);
+ renderer.render(scene,camera)})();
+})();
+</script></body></html>"""
+
+
+def build_hand_3d(grip_pattern: str, drive_name: str, joint_name: str, power: int) -> str:
+    """Interactive Three.js prosthetic hand: drag to orbit, scroll to zoom, X-ray to see internals."""
+    motors = {"Tendon-driven": 4, "Direct-motor": 5, "Underactuated": 2}.get(drive_name, 4)
+    cfg = {"grip": grip_pattern, "drive": drive_name, "joint": joint_name, "power": power, "motors": motors}
+    return HAND3D_HTML.replace("__CFG__", json.dumps(cfg))
 
 
 # -----------------------------------------------------------------------------
@@ -370,8 +433,8 @@ with tab_build:
         st.markdown('<div class="section-kicker">LIVE CONCEPT VIEW</div>', unsafe_allow_html=True)
         st.markdown(f"### {grip}")
         st.markdown(f"<span class='status-pill'>● SIMULATION UPDATED</span> &nbsp; <span class='soft-pill'>{drive}</span> &nbsp; <span class='soft-pill'>{joint}</span>", unsafe_allow_html=True)
-        components.html(build_hand_svg(g["pattern"], drive, joint, motor_power), height=630, scrolling=False)
-        st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']}</div>", unsafe_allow_html=True)
+        components.html(build_hand_3d(g["pattern"], drive, joint, motor_power), height=620, scrolling=False)
+        st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']} &nbsp;<span class='tiny-note'>Tip: press X-ray to see motors, electronics and tendon routing.</span></div>", unsafe_allow_html=True)
         st.markdown(f"<div class='tiny-note'>{d['summary']}</div>", unsafe_allow_html=True)
 
     with right:
