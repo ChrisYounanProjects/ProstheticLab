@@ -9,6 +9,7 @@ not clinical performance claims or quotes for real prostheses.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import streamlit as st
@@ -74,6 +75,102 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+# -----------------------------------------------------------------------------
+# Brand, loading screen, and layout chooser
+# -----------------------------------------------------------------------------
+CREATOR = "Chris Younan"
+LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5de0d0"/><stop offset="1" stop-color="#78a7ff"/></linearGradient>
+<radialGradient id="b" cx=".5" cy=".35" r=".75"><stop offset="0" stop-color="#1d3858"/><stop offset="1" stop-color="#091120"/></radialGradient></defs>
+<circle cx="100" cy="100" r="94" fill="url(#b)" stroke="url(#g)" stroke-width="5"/>
+<circle cx="100" cy="100" r="82" fill="none" stroke="#5de0d0" stroke-opacity=".3" stroke-width="1.5" stroke-dasharray="2 8" stroke-linecap="round"/>
+<g stroke="#091120" stroke-width="2.5">
+<rect x="66" y="52" width="14" height="62" rx="7" fill="url(#g)"/><rect x="83" y="42" width="14" height="72" rx="7" fill="url(#g)"/>
+<rect x="100" y="48" width="14" height="66" rx="7" fill="url(#g)"/><rect x="117" y="62" width="14" height="52" rx="7" fill="url(#g)"/>
+<rect x="44" y="108" width="14" height="40" rx="7" fill="url(#g)" transform="rotate(-32 51 128)"/>
+<rect x="64" y="100" width="72" height="56" rx="18" fill="url(#g)"/></g>
+<g fill="#091120"><circle cx="73" cy="82" r="3.8"/><circle cx="90" cy="74" r="3.8"/><circle cx="107" cy="78" r="3.8"/><circle cx="124" cy="88" r="3.8"/></g>
+<g fill="#5de0d0"><circle cx="73" cy="82" r="1.5"/><circle cx="90" cy="74" r="1.5"/><circle cx="107" cy="78" r="1.5"/><circle cx="124" cy="88" r="1.5"/></g>
+<circle cx="100" cy="130" r="10" fill="#091120" stroke="#fff" stroke-opacity=".85" stroke-width="2"/><circle cx="100" cy="130" r="3.4" fill="#5de0d0"/>
+<rect x="82" y="157" width="36" height="14" rx="4" fill="#5de0d0"/></svg>"""
+LOGO_URI = "data:image/svg+xml;base64," + base64.b64encode(LOGO_SVG.encode()).decode()
+
+SPLASH_HTML = """<style>
+@property --pl-n{syntax:'<integer>';initial-value:0;inherits:false}
+#pl-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1rem;
+background:radial-gradient(ellipse at 50% 38%,#17304f 0%,#0a1220 55%,#060a12 100%);animation:pl-bg 5.4s ease forwards;font-family:'Manrope',sans-serif}
+@keyframes pl-bg{0%,82%{opacity:1;visibility:visible}100%{opacity:0;visibility:hidden}}
+#pl-splash img{width:150px;height:150px;animation:pl-logo 5.4s cubic-bezier(.4,0,.2,1) forwards;filter:drop-shadow(0 0 28px rgba(93,224,208,.45))}
+@keyframes pl-logo{0%{opacity:0;transform:scale(.6)}12%,66%{opacity:1;transform:scale(1)}92%,100%{opacity:0;transform:scale(4.2)}}
+.pl-f{opacity:0;animation:pl-fade 5.4s ease forwards}
+@keyframes pl-fade{0%{opacity:0;transform:translateY(10px)}14%,64%{opacity:1;transform:none}74%,100%{opacity:0;transform:translateY(-6px)}}
+.pl-s{font-family:'DM Mono',monospace;letter-spacing:.3em;font-size:.78rem;color:#5de0d0;margin-top:1.5rem}
+.pl-t{font-size:clamp(2.2rem,8vw,3.7rem);font-weight:800;letter-spacing:-.05em;color:#f4f8ff;margin:.3rem 0;line-height:1.05}.pl-t span{color:#5de0d0}
+.pl-by{color:#9fb2cc;font-size:1.02rem}.pl-by b{color:#fff;font-weight:800}
+.pl-bar{width:min(320px,70vw);height:5px;border-radius:5px;background:#16263b;margin-top:1.7rem;overflow:hidden}
+.pl-bar i{display:block;height:100%;width:0;border-radius:5px;background:linear-gradient(90deg,#5de0d0,#78a7ff);animation:pl-fill 5.4s linear forwards}
+@keyframes pl-fill{0%,8%{width:0}66%,100%{width:100%}}
+.pl-pct{font-family:'DM Mono',monospace;font-size:.75rem;color:#8da4c1;margin-top:.7rem;counter-reset:pln var(--pl-n);animation:pl-cnt 5.4s linear forwards}
+.pl-pct::after{content:counter(pln) '%'}
+@keyframes pl-cnt{0%,8%{--pl-n:0}66%,100%{--pl-n:100}}
+</style>
+<div id="pl-splash"><img src="__LOGO__" alt="ProstheticLab logo">
+<div class="pl-f pl-s">WELCOME TO</div><div class="pl-f pl-t">Prosthetic<span>Lab</span></div>
+<div class="pl-f pl-by">Designed &amp; built by <b>__NAME__</b></div>
+<div class="pl-f pl-bar"><i></i></div><div class="pl-f pl-pct"></div></div>"""
+
+st.session_state.setdefault("mode", None)
+if not st.session_state.get("splashed"):
+    st.session_state["splashed"] = True
+    st.markdown(SPLASH_HTML.replace("__LOGO__", LOGO_URI).replace("__NAME__", CREATOR), unsafe_allow_html=True)
+
+IS_MOBILE = st.session_state["mode"] == "mobile"
+st.markdown("<style>@media (max-width:720px){.trow{grid-template-columns:1fr!important}}</style>", unsafe_allow_html=True)
+
+if st.session_state["mode"] is None:
+    st.markdown(
+        "<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl'],[data-testid='collapsedControl']{display:none!important}"
+        ".block-container{max-width:880px!important;padding-top:3rem!important}</style>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""<div style='text-align:center'><img src='{LOGO_URI}' style='width:104px;filter:drop-shadow(0 0 22px rgba(93,224,208,.4))'>
+        <div class='eyebrow' style='margin-top:1rem'>WELCOME</div><div class='hero-title'>Prosthetic<span>Lab</span></div>
+        <div class='hero-sub' style='margin:0 auto 1.6rem'>Designed &amp; built by <b style='color:#fff'>{CREATOR}</b>.<br>How would you like to explore?</div></div>""",
+        unsafe_allow_html=True,
+    )
+    pick_d, pick_m = st.columns(2, gap="large")
+    for col, key, icon, name, blurb, mode in [
+        (pick_d, "pick_desktop", "🖥️", "Desktop", "Side control panel, large 3D viewer, two-column lab.", "desktop"),
+        (pick_m, "pick_mobile", "📱", "Mobile", "Touch-first layout: sticky 3D viewer, big controls, pinch to zoom.", "mobile"),
+    ]:
+        with col:
+            st.markdown(
+                f"<div class='learn-card' style='text-align:center;min-height:120px;margin-bottom:.6rem'><div style='font-size:2rem'>{icon}</div>"
+                f"<div class='learn-title'>{name}</div><div class='learn-copy'>{blurb}</div></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(f"Open {name} layout", key=key, use_container_width=True):
+                st.session_state["mode"] = mode
+                st.rerun()
+    st.markdown(f"<div class='tiny-note' style='text-align:center;margin-top:1.5rem'>PROSTHETICLAB · BY {CREATOR.upper()}</div>", unsafe_allow_html=True)
+    st.stop()
+
+if IS_MOBILE:
+    st.markdown("""<style>
+      [data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:none!important}
+      .block-container{padding:.8rem .7rem 4rem!important}
+      .hero-sub{display:none}
+      .stButton>button{min-height:3rem;font-size:1rem}
+      [data-baseweb="select"]>div{min-height:3rem}
+      .stTabs [data-baseweb="tab-list"]{overflow-x:auto;gap:.1rem}
+      .stTabs [data-baseweb="tab"]{padding:.7rem .75rem;white-space:nowrap;font-size:.8rem}
+      .metric-card{min-height:auto;padding:.7rem .85rem}.metric-value{font-size:1.6rem}
+      .st-key-viewer{position:sticky;top:.25rem;z-index:60;background:#0a1220;padding:.2rem 0 .35rem;margin-bottom:.4rem}
+      h3{font-size:1.2rem!important}
+    </style>""", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # Educational model: deliberately transparent and illustrative
@@ -210,6 +307,12 @@ background:rgba(10,20,34,.82);border:1px solid var(--c);border-radius:8px;paddin
 .toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:7px 16px;border-radius:20px;font:800 12px 'Manrope',Arial;display:none;white-space:nowrap;z-index:5}
 .info{position:absolute;bottom:12px;right:12px;width:205px;background:rgba(10,20,34,.92);border:1px solid #5de0d0;border-radius:12px;padding:10px 12px;color:#c3d3e8;font:500 11px/1.5 'Manrope',Arial;display:none}
 .info b{display:block;color:#fff;font-size:12px;margin-bottom:3px}
+.mob .hint,.mob .tag{display:none}
+.mob .hud{top:8px;right:8px;left:8px;width:auto;display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;padding:7px 10px}
+.mob .hud .row{margin:3px 0}.mob .hud .b2{align-self:center}.mob #st{grid-column:1/3;margin-top:3px}
+.mob .bar{bottom:8px;left:8px;right:8px;flex-wrap:wrap;justify-content:center}
+.mob .bar button{padding:10px 13px;font-size:12px}
+.mob .info{left:8px;right:8px;width:auto;bottom:62px}
 </style></head><body><div id="v">
 <div class="hint">DRAG ROTATE · SCROLL ZOOM · RIGHT-DRAG PAN</div>
 <div class="bar"><button id="bt">&#9654; Run test</button><button id="bx">X-ray</button><button id="bs" class="on">Auto-spin</button><button id="bz">+</button><button id="bo">&minus;</button><button id="br">Reset</button></div>
@@ -223,7 +326,7 @@ background:rgba(10,20,34,.82);border:1px solid var(--c);border-radius:8px;paddin
 (function(){
 const CFG=__CFG__, V3=THREE.Vector3, rad=d=>d*Math.PI/180;
 const ST=(function(){try{return window.parent.__pl=window.parent.__pl||{}}catch(e){return {}}})();
-const root=document.getElementById('v');
+const root=document.getElementById('v');if(CFG.mobile)root.classList.add('mob');
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
@@ -419,8 +522,8 @@ function updLines(){lines.forEach((o,bi)=>{const f=o.f,r=f.d.r,a=o.l.geometry.at
 const grid=new THREE.GridHelper(14,28,CFG.within?0x5de0d0:0xff5b5b,CFG.within?0x24405c:0x5c2430);grid.position.y=-3.3;grid.material.transparent=true;grid.material.opacity=.35;scene.add(grid);
 
 // --- Camera orbit (custom: drag rotate, wheel zoom, right-drag pan)
-const C=ST.cam||{th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3,spin:true,xray:false};ST.cam=C;
-const def={th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3};
+const def={th:.6,ph:1.4,d:CFG.mobile?15.5:12.5,tx:0,ty:CFG.mobile?.6:-.1,tz:.3};
+const C=(ST.mob===CFG.mobile&&ST.cam)||Object.assign({spin:true,xray:false},def);ST.cam=C;ST.mob=CFG.mobile;
 function cam(){const s=Math.sin(C.ph);camera.position.set(C.tx+C.d*s*Math.sin(C.th),C.ty+C.d*Math.cos(C.ph),C.tz+C.d*s*Math.cos(C.th));camera.lookAt(C.tx,C.ty,C.tz)}
 const el=renderer.domElement;let last=null,drag=false;
 el.addEventListener('contextmenu',e=>e.preventDefault());
@@ -433,9 +536,11 @@ function pick(e){const r=el.getBoundingClientRect();mv2.set((e.clientX-r.left)/r
  const h=ray.intersectObjects(scene.children,true).filter(x=>x.object.type==='Mesh')[0];let k=null;
  if(h){let o=h.object;while(o&&!k){k=o.userData.part||null;o=o.parent}}
  if(k&&INF[k]){inf.style.display='block';inf.innerHTML='<b>'+INF[k][0]+'</b>'+INF[k][1]}else inf.style.display='none'}
-el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);last=[e.clientX,e.clientY];down=[e.clientX,e.clientY];drag=true;C.spin=false;sync()});
-el.addEventListener('pointerup',e=>{drag=false;if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<5)pick(e);down=null});
-el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];
+const pts=new Map();let pd=0;
+el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);last=[e.clientX,e.clientY];down=pts.size>1?null:[e.clientX,e.clientY];drag=true;C.spin=false;sync();if(pts.size===2){const q=[...pts.values()];pd=Math.hypot(q[0][0]-q[1][0],q[0][1]-q[1][1])}});
+const endp=e=>{pts.delete(e.pointerId);drag=pts.size>0;if(pts.size)last=[...pts.values()][0];if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<5)pick(e);down=null};
+el.addEventListener('pointerup',endp);el.addEventListener('pointercancel',endp);
+el.addEventListener('pointermove',e=>{if(pts.has(e.pointerId))pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const q=[...pts.values()],dd=Math.hypot(q[0][0]-q[1][0],q[0][1]-q[1][1]);if(pd)C.d=Math.max(4,Math.min(20,C.d*pd/dd));pd=dd;return}if(!drag)return;const dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];
  if(e.buttons&2||e.shiftKey){const k=C.d*.0016,rt=new V3().setFromMatrixColumn(camera.matrix,0),up=new V3().setFromMatrixColumn(camera.matrix,1);
   C.tx+=(-rt.x*dx+up.x*dy)*k;C.ty+=(-rt.y*dx+up.y*dy)*k;C.tz+=(-rt.z*dx+up.z*dy)*k}
  else{C.th-=dx*.009;C.ph=Math.max(.15,Math.min(Math.PI-.15,C.ph-dy*.009))}});
@@ -481,7 +586,7 @@ def build_hand_3d(grip_pattern: str, drive_name: str, joint_name: str, power: in
     motors = {"Tendon-driven": 4, "Direct-motor": 5, "Underactuated": 2}.get(drive_name, 4)
     weight = 190 + motors * 42 + power * 7 + {"Multi-link": 35, "Compliant joint": 12}.get(joint_name, 0)
     cfg = {"grip": grip_pattern, "drive": drive_name, "joint": joint_name, "power": power, "motors": motors, "weight": weight,
-           "strength": 70, "precision": 70, "stability": 70, "resp": 6, "cost": 0, "budget": 0, "within": True}
+           "strength": 70, "precision": 70, "stability": 70, "resp": 6, "cost": 0, "budget": 0, "within": True, "mobile": False}
     cfg.update(extra or {})
     return HAND3D_HTML.replace("__CFG__", json.dumps(cfg))
 
@@ -489,15 +594,37 @@ def build_hand_3d(grip_pattern: str, drive_name: str, joint_name: str, power: in
 # -----------------------------------------------------------------------------
 # Header and navigation
 # -----------------------------------------------------------------------------
-st.markdown('<div class="eyebrow">ENGINEERING EXPLORER · MODULE 02</div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-title">Prosthetic<span>Lab</span></div>', unsafe_allow_html=True)
+if IS_MOBILE:
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:.75rem'><img src='{LOGO_URI}' style='width:48px'><div><div class='eyebrow'>BY {CREATOR.upper()}</div>"
+        "<div style='font-size:1.6rem;font-weight:800;color:#f4f8ff;letter-spacing:-.04em;line-height:1.1'>Prosthetic<span style='color:#5de0d0'>Lab</span></div></div></div>",
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:1rem'><img src='{LOGO_URI}' style='width:62px'><div class='eyebrow'>ENGINEERING EXPLORER · MODULE 02 · BY {CREATOR.upper()}</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="hero-title">Prosthetic<span>Lab</span></div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="hero-sub">Design a conceptual prosthetic hand. Swap its mechanisms, change the grip, and see how engineers balance useful motion, strength, comfort, and cost.</div>',
     unsafe_allow_html=True,
 )
 st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-with st.sidebar:
+tab_build, tab_mechanics, tab_tradeoffs = st.tabs(
+    ["BUILD", "HOW IT WORKS", "TRADE-OFFS"] if IS_MOBILE else ["01  /  BUILD LAB", "02  /  HOW IT WORKS", "03  /  DESIGN TRADE-OFFS"]
+)
+if IS_MOBILE:
+    with tab_build:
+        try:
+            viewer_slot = st.container(key="viewer")
+        except TypeError:
+            viewer_slot = st.container()
+        ctrl_host = st.expander("🎛  Build controls", expanded=True)
+else:
+    ctrl_host = st.sidebar
+with ctrl_host:
     st.markdown("<div class='eyebrow'>LAB CONSOLE</div>", unsafe_allow_html=True)
     st.markdown("## Build parameters")
     st.caption("Change any control to update the concept model and its estimated trade-offs.")
@@ -512,6 +639,12 @@ with st.sidebar:
     budget = st.slider("Target budget (illustrative)", 500, 12000, 6000, step=250, format="$%d")
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("<div class='tiny-note'>Educational prototype only. Scores are illustrative relative ratings—not medical-device specifications, a diagnosis, or a real prosthesis quote.</div>", unsafe_allow_html=True)
+
+    if not IS_MOBILE:
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+        if st.button("↩  Change layout", key="chg_side", use_container_width=True):
+            st.session_state["mode"] = None
+            st.rerun()
 
 # Derive all values from current selections.
 d = DRIVES[drive]
@@ -529,62 +662,72 @@ stability = clamp_score(0.36 * strength + 0.34 * precision + 0.30 * durability +
 within_budget = cost_estimate <= budget
 
 # Main app tabs.
-tab_build, tab_mechanics, tab_tradeoffs = st.tabs(["01  /  BUILD LAB", "02  /  HOW IT WORKS", "03  /  DESIGN TRADE-OFFS"])
 
-with tab_build:
-    left, right = st.columns([1.04, 1], gap="large")
-    with left:
+def render_viewer(height, compact=False):
+    if not compact:
         st.markdown('<div class="section-kicker">LIVE CONCEPT VIEW</div>', unsafe_allow_html=True)
         st.markdown(f"### {grip}")
-        st.markdown(f"<span class='status-pill'>● SIMULATION UPDATED</span> &nbsp; <span class='soft-pill'>{drive}</span> &nbsp; <span class='soft-pill'>{joint}</span>", unsafe_allow_html=True)
-        components.html(
-            build_hand_3d(g["pattern"], drive, joint, motor_power, {
-                "strength": strength, "precision": precision, "stability": stability, "resp": response_speed,
-                "cost": cost_estimate, "budget": budget, "within": within_budget,
-            }),
-            height=620, scrolling=False,
-        )
-        st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']} &nbsp;<span class='tiny-note'>Try: Run test, X-ray, and click any part of the hand.</span></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='tiny-note'>{d['summary']}</div>", unsafe_allow_html=True)
+    extra_pill = f" &nbsp; <span class='soft-pill'>{grip}</span>" if compact else ""
+    st.markdown(f"<span class='status-pill'>● LIVE</span> &nbsp; <span class='soft-pill'>{drive}</span> &nbsp; <span class='soft-pill'>{joint}</span>{extra_pill}", unsafe_allow_html=True)
+    components.html(
+        build_hand_3d(g["pattern"], drive, joint, motor_power, {
+            "strength": strength, "precision": precision, "stability": stability, "resp": response_speed,
+            "cost": cost_estimate, "budget": budget, "within": within_budget, "mobile": IS_MOBILE,
+        }),
+        height=height, scrolling=False,
+    )
 
-    with right:
-        st.markdown('<div class="section-kicker">SIMULATED PERFORMANCE</div>', unsafe_allow_html=True)
-        st.markdown("### What this design prioritizes")
-        col_a, col_b = st.columns(2, gap="medium")
-        with col_a:
-            st.markdown(f'''<div class="metric-card"><div class="metric-label">Grip stability</div><div class="metric-value">{stability}<span style="font-size:1rem;color:#8da2bb">/100</span></div><div class="metric-note">Strength, precision, durability blend</div></div>''', unsafe_allow_html=True)
-        with col_b:
-            st.markdown(f'''<div class="metric-card"><div class="metric-label">Estimated build cost</div><div class="metric-value">${cost_estimate:,}</div><div class="metric-note">Illustrative parts + integration estimate</div></div>''', unsafe_allow_html=True)
 
-        st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
-        metrics = [
-            ("Precision", precision, "Small, controlled movements"),
-            ("Strength", strength, "Conceptual force potential"),
-            ("Response", response, "How quickly a command is reflected"),
-            ("Comfort", comfort, "Relative comfort / weight emphasis"),
-            ("Durability", durability, "Relative mechanical simplicity"),
-        ]
-        for label, score, note in metrics:
-            m1, m2 = st.columns([0.80, 0.20], vertical_alignment="center")
-            with m1:
-                st.markdown(f"<div style='font-weight:700;color:#dce7f6;font-size:.88rem'>{label}</div><div style='font-size:.72rem;color:#8297b0;margin-bottom:.2rem'>{note}</div>", unsafe_allow_html=True)
-                st.progress(score / 100)
-            with m2:
-                st.markdown(f"<div style='font-family:DM Mono,monospace;text-align:right;color:#5de0d0;font-size:1.05rem;padding-top:.1rem'>{score:02d}</div>", unsafe_allow_html=True)
+def render_notes():
+    st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']} &nbsp;<span class='tiny-note'>Try: Run test, X-ray, and tap any part of the hand.</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='tiny-note'>{d['summary']}</div>", unsafe_allow_html=True)
 
-        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-        if within_budget:
-            st.markdown(f"<span class='status-pill'>WITHIN TARGET BUDGET</span> &nbsp; <span class='tiny-note'>${budget - cost_estimate:,} remaining</span>", unsafe_allow_html=True)
-            st.markdown("<div class='callout'>This design fits the selected budget estimate. That does not guarantee a real build would cost this amount.</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<span style='display:inline-block;border:1px solid #7b6335;background:#3a2c17;color:#ffd58a;border-radius:100px;padding:.27rem .65rem;font-size:.72rem;font-weight:700'>OVER TARGET BUDGET</span> &nbsp; <span class='tiny-note'>${cost_estimate - budget:,} above target</span>", unsafe_allow_html=True)
-            st.markdown("<div class='callout' style='border-color:#f8c66b'>Consider a simpler joint, a less expensive drive system, or lower power / response settings.</div>", unsafe_allow_html=True)
 
-        st.markdown("#### Mechanism notes")
-        st.markdown(f"**Why it might work:** {d['pros']}")
-        st.markdown(f"**What to watch:** {d['tradeoff']}")
+def render_metrics():
+    st.markdown('<div class="section-kicker">SIMULATED PERFORMANCE</div>', unsafe_allow_html=True)
+    st.markdown("### What this design prioritizes")
+    col_a, col_b = st.columns(2, gap="small" if IS_MOBILE else "medium")
+    with col_a:
+        st.markdown(f'''<div class="metric-card"><div class="metric-label">Grip stability</div><div class="metric-value">{stability}<span style="font-size:1rem;color:#8da2bb">/100</span></div><div class="metric-note">Strength, precision, durability blend</div></div>''', unsafe_allow_html=True)
+    with col_b:
+        st.markdown(f'''<div class="metric-card"><div class="metric-label">Estimated build cost</div><div class="metric-value">${cost_estimate:,}</div><div class="metric-note">Illustrative parts + integration estimate</div></div>''', unsafe_allow_html=True)
+    st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
+    metrics = [
+        ("Precision", precision, "Small, controlled movements"),
+        ("Strength", strength, "Conceptual force potential"),
+        ("Response", response, "How quickly a command is reflected"),
+        ("Comfort", comfort, "Relative comfort / weight emphasis"),
+        ("Durability", durability, "Relative mechanical simplicity"),
+    ]
+    for label, score, note in metrics:
+        if IS_MOBILE:
+            st.markdown(
+                f"<div style='margin:.6rem 0'><div style='display:flex;justify-content:space-between;align-items:baseline'><span style='font-weight:700;color:#dce7f6;font-size:.95rem'>{label}</span>"
+                f"<span style='font-family:DM Mono,monospace;color:#5de0d0;font-size:1.05rem'>{score:02d}</span></div>"
+                f"<div style='height:8px;background:#22344b;border-radius:6px;margin-top:.3rem'><div style='width:{score}%;height:100%;border-radius:6px;background:linear-gradient(90deg,#5de0d0,#78a7ff)'></div></div></div>",
+                unsafe_allow_html=True,
+            )
+            continue
+        m1, m2 = st.columns([0.80, 0.20], vertical_alignment="center")
+        with m1:
+            st.markdown(f"<div style='font-weight:700;color:#dce7f6;font-size:.88rem'>{label}</div><div style='font-size:.72rem;color:#8297b0;margin-bottom:.2rem'>{note}</div>", unsafe_allow_html=True)
+            st.progress(score / 100)
+        with m2:
+            st.markdown(f"<div style='font-family:DM Mono,monospace;text-align:right;color:#5de0d0;font-size:1.05rem;padding-top:.1rem'>{score:02d}</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    if within_budget:
+        st.markdown(f"<span class='status-pill'>WITHIN TARGET BUDGET</span> &nbsp; <span class='tiny-note'>${budget - cost_estimate:,} remaining</span>", unsafe_allow_html=True)
+        st.markdown("<div class='callout'>This design fits the selected budget estimate. That does not guarantee a real build would cost this amount.</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<span style='display:inline-block;border:1px solid #7b6335;background:#3a2c17;color:#ffd58a;border-radius:100px;padding:.27rem .65rem;font-size:.72rem;font-weight:700'>OVER TARGET BUDGET</span> &nbsp; <span class='tiny-note'>${cost_estimate - budget:,} above target</span>", unsafe_allow_html=True)
+        st.markdown("<div class='callout' style='border-color:#f8c66b'>Consider a simpler joint, a less expensive drive system, or lower power / response settings.</div>", unsafe_allow_html=True)
+    st.markdown("#### Mechanism notes")
+    st.markdown(f"**Why it might work:** {d['pros']}")
+    st.markdown(f"**What to watch:** {d['tradeoff']}")
+
+
+def render_compare():
     st.markdown('<div class="section-kicker">QUICK EXPERIMENT</div>', unsafe_allow_html=True)
     st.markdown("### Compare the design choices")
     comparison = st.columns(3, gap="medium")
@@ -598,12 +741,30 @@ with tab_build:
             selected = name == drive
             border = "#5de0d0" if selected else "#27384e"
             container.markdown(
-                f'''<div style="background:#101b2b;border:1px solid {border};border-radius:14px;padding:1rem;min-height:115px;">
+                f'''<div style="background:#101b2b;border:1px solid {border};border-radius:14px;padding:1rem;min-height:115px;margin-bottom:.5rem">
                 <div style="font-family:DM Mono,monospace;color:{'#5de0d0' if selected else '#8ea4bf'};font-size:.68rem;letter-spacing:.1em">{'CURRENT SELECTION' if selected else 'DRIVE OPTION'}</div>
                 <div style="font-size:1.02rem;color:#f1f6ff;font-weight:800;margin:.35rem 0">{name}</div>
                 <div style="font-size:.82rem;color:#9eafc4">{tag}</div><div style="font-size:.73rem;color:#5de0d0;margin-top:.5rem">{price}</div></div>''',
                 unsafe_allow_html=True,
             )
+
+
+with tab_build:
+    if IS_MOBILE:
+        with viewer_slot:
+            render_viewer(400, compact=True)
+        render_notes()
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+        render_metrics()
+    else:
+        left, right = st.columns([1.04, 1], gap="large")
+        with left:
+            render_viewer(620)
+            render_notes()
+        with right:
+            render_metrics()
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    render_compare()
 
 with tab_mechanics:
     st.markdown('<div class="section-kicker">MECHANICS 101</div>', unsafe_allow_html=True)
@@ -638,7 +799,7 @@ with tab_tradeoffs:
     ]
     for i, (name, goal, tradeoff_text) in enumerate(rows):
         st.markdown(
-            f'''<div style="display:grid;grid-template-columns:1.05fr 1.55fr 1.55fr;gap:.8rem;background:{'#132136' if i % 2 == 0 else '#0e1928'};border:1px solid #24354b;border-radius:11px;padding:.85rem 1rem;margin:.45rem 0;align-items:start">
+            f'''<div class="trow" style="display:grid;grid-template-columns:1.05fr 1.55fr 1.55fr;gap:.8rem;background:{'#132136' if i % 2 == 0 else '#0e1928'};border:1px solid #24354b;border-radius:11px;padding:.85rem 1rem;margin:.45rem 0;align-items:start">
               <div style="color:#eaf2ff;font-weight:800">{name}</div>
               <div><div style="font-family:DM Mono,monospace;color:#5de0d0;font-size:.65rem;letter-spacing:.08em;margin-bottom:.25rem">DESIGN BENEFIT</div><div style="color:#aebed1;font-size:.83rem;line-height:1.5">{goal}</div></div>
               <div><div style="font-family:DM Mono,monospace;color:#f8c66b;font-size:.65rem;letter-spacing:.08em;margin-bottom:.25rem">TRADE-OFF</div><div style="color:#aebed1;font-size:.83rem;line-height:1.5">{tradeoff_text}</div></div>
@@ -656,6 +817,12 @@ with tab_tradeoffs:
 st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 foot_l, foot_r = st.columns([3, 1])
 with foot_l:
-    st.markdown("<div class='tiny-note'>PROSTHETICLAB · A CONCEPTUAL LEARNING TOOL FOR ASSISTIVE-TECHNOLOGY ENGINEERING</div>", unsafe_allow_html=True)
+    st.markdown("<div class='tiny-note'>PROSTHETICLAB · A CONCEPTUAL LEARNING TOOL FOR ASSISTIVE-TECHNOLOGY ENGINEERING · BY CHRIS YOUNAN</div>", unsafe_allow_html=True)
 with foot_r:
     st.markdown("<div style='text-align:right;color:#6f879f;font-family:DM Mono,monospace;font-size:.7rem'>BUILD / TEST / REFINE</div>", unsafe_allow_html=True)
+
+if IS_MOBILE:
+    st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
+    if st.button("↩  Change layout", key="chg_foot", use_container_width=True):
+        st.session_state["mode"] = None
+        st.rerun()
