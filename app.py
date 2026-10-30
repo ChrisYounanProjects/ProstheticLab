@@ -196,17 +196,28 @@ HAND3D_HTML = r"""<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:'Manrope',Arial,sans-serif}
 #v{position:absolute;inset:0;border:1px solid #25364d;border-radius:20px;overflow:hidden;background:radial-gradient(circle at 50% 38%,#1c3453 0%,#0d1829 60%,#080e18 100%)}
 canvas{display:block;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}
-.hint{position:absolute;top:12px;left:14px;font:500 10px 'DM Mono',monospace;letter-spacing:.14em;color:#7f97b4;pointer-events:none}
+.hint{position:absolute;bottom:50px;left:14px;font:500 10px 'DM Mono',monospace;letter-spacing:.14em;color:#7f97b4;pointer-events:none}
 .bar{position:absolute;bottom:12px;left:12px;display:flex;gap:6px}
 .bar button{background:#12233a;color:#cfe0f5;border:1px solid #2c4262;border-radius:9px;padding:6px 11px;font:700 11px 'Manrope',Arial;cursor:pointer}
 .bar button:hover{border-color:#5de0d0}.bar button.on{background:#5de0d0;color:#06151d;border-color:#5de0d0}
 .tag{position:absolute;left:0;top:0;pointer-events:none;font:500 10px 'DM Mono',monospace;letter-spacing:.08em;color:#e8f1ff;white-space:nowrap;
 background:rgba(10,20,34,.82);border:1px solid var(--c);border-radius:8px;padding:4px 8px 4px 8px}
 .tag b{color:var(--c);font-weight:500;margin-right:6px}
+.hud{position:absolute;top:12px;right:12px;width:178px;background:rgba(10,20,34,.84);border:1px solid #2c4262;border-radius:12px;padding:10px 12px;font:500 10px 'DM Mono',monospace;color:#9fb4cf;letter-spacing:.06em}
+.hud .row{display:flex;justify-content:space-between;margin:6px 0 3px}.hud .v{color:#eaf3ff}
+.hud .b2{height:5px;background:#1d3048;border-radius:4px;overflow:hidden}.hud .b2 i{display:block;height:100%;background:linear-gradient(90deg,#5de0d0,#78a7ff)}
+#st{margin-top:9px;font-weight:700}
+.toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:7px 16px;border-radius:20px;font:800 12px 'Manrope',Arial;display:none;white-space:nowrap;z-index:5}
+.info{position:absolute;bottom:12px;right:12px;width:205px;background:rgba(10,20,34,.92);border:1px solid #5de0d0;border-radius:12px;padding:10px 12px;color:#c3d3e8;font:500 11px/1.5 'Manrope',Arial;display:none}
+.info b{display:block;color:#fff;font-size:12px;margin-bottom:3px}
 </style></head><body><div id="v">
 <div class="hint">DRAG ROTATE · SCROLL ZOOM · RIGHT-DRAG PAN</div>
-<div class="bar"><button id="bx">X-ray</button><button id="bs" class="on">Auto-spin</button><button id="bz">+</button><button id="bo">&minus;</button><button id="br">Reset</button></div>
-<div class="tag" id="t1"></div><div class="tag" id="t2"></div></div>
+<div class="bar"><button id="bt">&#9654; Run test</button><button id="bx">X-ray</button><button id="bs" class="on">Auto-spin</button><button id="bz">+</button><button id="bo">&minus;</button><button id="br">Reset</button></div>
+<div class="tag" id="t1"></div><div class="tag" id="t2"></div>
+<div class="hud"><div class="row"><span>GRIP FORCE</span><span class="v" id="hs"></span></div><div class="b2"><i id="hsb"></i></div>
+<div class="row"><span>STABILITY</span><span class="v" id="hb"></span></div><div class="b2"><i id="hbb"></i></div>
+<div class="row"><span>WEIGHT</span><span class="v" id="hw"></span></div><div class="row"><span>COST</span><span class="v" id="hc"></span></div><div id="st"></div></div>
+<div class="toast" id="ts"></div><div class="info" id="inf"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
@@ -226,17 +237,21 @@ es.add(new THREE.Mesh(new THREE.SphereGeometry(30,32,16),new THREE.MeshBasicMate
 scene.environment=pm.fromScene(es,.03).texture;
 scene.add(new THREE.HemisphereLight(0xbfd9ff,0x1a2233,.35));
 const key=new THREE.DirectionalLight(0xffffff,1.1);key.position.set(4,7,9);scene.add(key);
-const rim=new THREE.DirectionalLight(0x5de0d0,.9);rim.position.set(-7,3,-6);scene.add(rim);
+const rim=new THREE.DirectionalLight(CFG.within?0x5de0d0:0xff5b5b,.9);rim.position.set(-7,3,-6);scene.add(rim);
 
 const DC={'Tendon-driven':0xf8c66b,'Direct-motor':0x78a7ff,'Underactuated':0x5de0d0}[CFG.drive];
 const JC=CFG.joint==='Compliant joint'?0xf8c66b:0x5de0d0;
 const mat=(c,m,r,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,metalness:m,roughness:r},o||{}));
 const M={shell:mat(0x3b475a,.75,.34),metal:mat(0xb9c4d3,.92,.24),dark:mat(0x1b222d,.6,.45),pad:mat(0x10151c,0,.85),plate:mat(0x56657b,.85,.3),
  cyan:mat(0x5de0d0,.2,.4,{emissive:0x5de0d0,emissiveIntensity:.3+CFG.power*.12}),jc:mat(JC,.3,.45,{emissive:JC,emissiveIntensity:.5}),
- rubber:mat(0xc99a3c,0,.7),drive:mat(DC,.8,.3),amber:mat(0xf8c66b,.3,.4,{emissive:0xf8c66b,emissiveIntensity:.35}),pcb:mat(0x0d3b2e,.4,.5)};
+ rubber:mat(0xc99a3c,0,.7),drive:mat(DC,.8,.3,{emissive:DC,emissiveIntensity:0}),amber:mat(0xf8c66b,.3,.4,{emissive:0xf8c66b,emissiveIntensity:.35}),pcb:mat(0x0d3b2e,.4,.5)};
 const shellMats=[M.shell,M.pad,M.plate];
 const mesh=(g,m,x,y,z)=>{const o=new THREE.Mesh(g,m);o.position.set(x||0,y||0,z||0);return o};
 const hand=new THREE.Group();scene.add(hand);
+const tg=(o,k)=>{o.userData.part=k;return o},gearJ=[];
+function gearMesh(r,n){const g=new THREE.Group();g.add(mesh(new THREE.CylinderGeometry(r,r,.06,24),M.metal));
+ for(let k=0;k<n;k++){const a=k*2*Math.PI/n,t=mesh(new THREE.BoxGeometry(r*.4,.06,r*.32),M.metal,Math.cos(a)*r,0,Math.sin(a)*r);t.rotation.y=-a;g.add(t)}
+ g.add(mesh(new THREE.CylinderGeometry(r*.3,r*.3,.08,12),M.dark));return g}
 
 function rrect(w,h,r){const s=new THREE.Shape(),x=-w/2,y=-h/2;s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s}
 // --- Palm, wrist, socket
@@ -259,21 +274,29 @@ for(let i=0;i<nm;i++){const x=nm===1?0:-.62+1.24*i/(nm-1);
  const g=new THREE.Group();g.position.set(x,.2,-.02);
  g.add(mesh(new THREE.CylinderGeometry(.13,.13,.62,20),M.drive));
  g.add(mesh(new THREE.CylinderGeometry(.07,.07,.2,12),M.metal,0,-.4,0));
+ for(let k=0;k<3;k++){const a=k*2.094,f=mesh(new THREE.BoxGeometry(.05,.5,.03),M.cyan,Math.sin(a)*.135,0,Math.cos(a)*.135);f.rotation.y=a;g.add(f)}
+ const ge=gearMesh(.17,10);ge.position.y=-.42;g.add(ge);g.userData.part='motor';
  g.add(mesh(new THREE.CylinderGeometry(.15,.15,.08,20),M.dark,0,.2,0));
  hand.add(g);motors.push(g)}
-hand.add(mesh(new THREE.BoxGeometry(1.35,.45,.05),M.pcb,0,-.6,-.2));
+let wt=null;
+if(CFG.drive==='Underactuated'){const m=new THREE.Group();m.position.set(0,.8,-.2);m.add(mesh(new THREE.BoxGeometry(1.3,.05,.05),M.metal));
+ const pv=mesh(new THREE.CylinderGeometry(.07,.07,.12,14),M.amber);pv.rotation.x=Math.PI/2;m.add(pv);
+ const mk=x=>{const s=new THREE.Group();s.position.set(x,-.14,0);s.add(mesh(new THREE.BoxGeometry(.6,.04,.04),M.cyan),mesh(new THREE.BoxGeometry(.03,.14,.03),M.metal,0,.07,0));m.add(s);return s};
+ wt={m,a:mk(-.43),b:mk(.43)};hand.add(m)}
+hand.add(tg(mesh(new THREE.BoxGeometry(1.35,.45,.05),M.pcb,0,-.6,-.2),'pcb'));
 for(let i=0;i<4;i++)hand.add(mesh(new THREE.BoxGeometry(.07,.04,.03),M.cyan,-.45+.3*i,-.52,-.17));
-hand.add(mesh(new THREE.BoxGeometry(.95,.4,.3),M.dark,0,-.6,.08));
+hand.add(tg(mesh(new THREE.BoxGeometry(.95,.4,.3),M.dark,0,-.6,.08),'pcb'));
 hand.add(mesh(new THREE.BoxGeometry(.8,.05,.32),M.amber,0,-.6,.08));
 
 // --- Joint + segment builders
-function joint(r){const g=new THREE.Group();
+function joint(r){const g=new THREE.Group();g.userData.part='joint';
  if(CFG.joint==='Compliant joint'){g.add(mesh(new THREE.SphereGeometry(r*.8,18,14),M.rubber));
   [-.14,0,.14].forEach(k=>{const t=mesh(new THREE.TorusGeometry(r*.85,r*.11,10,28),M.rubber,0,r*k*2,0);t.rotation.x=Math.PI/2;g.add(t)})}
  else{g.add(mesh(new THREE.SphereGeometry(r*.97,18,14),M.dark));
   const pin=mesh(new THREE.CylinderGeometry(r*.36,r*.36,r*2.15,18),M.jc);pin.rotation.z=Math.PI/2;g.add(pin);
   if(CFG.joint==='Multi-link')[-1,1].forEach(s=>{g.add(mesh(new THREE.BoxGeometry(r*.2,r*1.9,r*.55),M.metal,s*r*1.0,r*.3,0));
    g.add(mesh(new THREE.CylinderGeometry(r*.12,r*.12,r*.3,10),M.jc,s*r*1.05,r*.95,0)).rotation.z=Math.PI/2})}
+ if(CFG.drive==='Direct-motor'){const gw=new THREE.Group();gw.rotation.z=Math.PI/2;gw.position.x=r*1.12;const ge=gearMesh(r*.72,8);gw.add(ge);g.add(gw);gearJ.push(ge)}
  return g}
 function seg(L,r,last){const g=new THREE.Group();
  g.add(mesh(new THREE.CylinderGeometry(r*.88,r,L,24),last?M.shell:M.metal,0,L/2,0));
@@ -284,12 +307,12 @@ function seg(L,r,last){const g=new THREE.Group();
   g.add(mesh(new THREE.BoxGeometry(r*.4,.03,.03),M.cyan,0,L*.45,-r*1.0))}
  return g}
 const FD=[{x:-.66,y:1.08,L:[.85,.55,.42],r:.19},{x:-.22,y:1.1,L:[.95,.62,.45],r:.2},{x:.22,y:1.08,L:[.88,.58,.43],r:.19},{x:.64,y:.98,L:[.68,.42,.36],r:.16}];
-const fingers=FD.map(d=>{const mcp=new THREE.Group();mcp.position.set(d.x,d.y,0);hand.add(mcp);
+const fingers=FD.map(d=>{const mcp=new THREE.Group();mcp.position.set(d.x,d.y,0);mcp.userData.part='finger';hand.add(mcp);
  mcp.add(joint(d.r),seg(d.L[0],d.r));
  const pip=new THREE.Group();pip.position.y=d.L[0];mcp.add(pip);pip.add(joint(d.r*.92),seg(d.L[1],d.r*.92));
  const dip=new THREE.Group();dip.position.y=d.L[1];pip.add(dip);dip.add(joint(d.r*.85),seg(d.L[2],d.r*.85,true));
  return {d,mcp,pip,dip}});
-const th=(function(){const cmc=new THREE.Group();cmc.position.set(-.95,-.55,.15);cmc.rotation.order='YXZ';hand.add(cmc);
+const th=(function(){const cmc=new THREE.Group();cmc.position.set(-.95,-.55,.15);cmc.userData.part='thumb';cmc.rotation.order='YXZ';hand.add(cmc);
  cmc.add(joint(.24),seg(.75,.24));
  const mp=new THREE.Group();mp.position.y=.75;cmc.add(mp);mp.add(joint(.21),seg(.55,.21));
  const ip=new THREE.Group();ip.position.y=.55;mp.add(ip);ip.add(joint(.19),seg(.45,.19,true));
@@ -316,24 +339,84 @@ function solve(name,idx){const p=P[name];apply(p);hand.updateMatrixWorld(true);
   if(!imp){for(let k=0;k<5;k++)st[k]*=.6;if(st[0]<.05)break}}
  for(let k=0;k<5;k++)p[12+k]=t[k];contact[name]=tg}
 solve('pinch',[0]);solve('tripod',[0,1]);
-const ball=mesh(new THREE.SphereGeometry(.17,24,18),M.amber);scene.add(ball);
-const pen=mesh(new THREE.CylinderGeometry(.07,.07,2.6,16),M.amber);pen.rotation.set(rad(15),0,rad(78));scene.add(pen);
-ball.visible=pen.visible=false;
-const target=P[CFG.grip]||P.open;
+// --- Held objects
+const BR=.6,BCY=.5,BCZ=.5+BR+.04;
+function hitF(f,cy,cz,R){const d=(p,rr)=>Math.hypot(p.y-cy,p.z-cz)-R-rr;
+ return d(fPad(f),.03)<=0||d(f.pip.localToWorld(new V3()),f.d.r*.92)<=0||d(f.dip.localToWorld(new V3()),f.d.r*.85)<=0}
+function wrap(name,ra,cy,cz,R){const p=P[name];fingers.forEach((f,i)=>{let s=0;
+ for(;s<1.6;s+=.02){f.mcp.rotation.x=rad(ra[0]*s);f.pip.rotation.x=rad(ra[1]*s);f.dip.rotation.x=rad(ra[2]*s);hand.updateMatrixWorld(true);if(hitF(f,cy,cz,R))break}
+ p[3*i]=ra[0]*s;p[3*i+1]=ra[1]*s;p[3*i+2]=ra[2]*s})}
+function thumbTo(p,tg){apply(p);hand.updateMatrixWorld(true);const t=[30,20,50,20,20],lo=[0,-10,0,0,0],hi=[70,60,90,70,70],st=[30,30,30,30,30];
+ const cost=()=>{apply(p.slice(0,12).concat(t));hand.updateMatrixWorld(true);return tPad().distanceTo(tg)};let best=cost();
+ for(let it=0;it<300;it++){let imp=false;for(let k=0;k<5;k++)for(const s of[1,-1]){const o=t[k];t[k]=Math.max(lo[k],Math.min(hi[k],o+s*st[k]));const c=cost();if(c<best-1e-4){best=c;imp=true}else t[k]=o}
+  if(!imp){for(let k=0;k<5;k++)st[k]*=.6;if(st[0]<.05)break}}
+ for(let k=0;k<5;k++)p[12+k]=t[k]}
+wrap('power',[55,70,50],BCY,BCZ,BR);thumbTo(P.power,new V3(-.45,BCY-BR*.95,BCZ));
+apply(P.hook);hand.updateMatrixWorld(true);const hookC=new V3();fingers.forEach(f=>hookC.add(fPad(f)));hookC.multiplyScalar(.25);
+const glass=mat(0x7fb8ff,0,.08,{transparent:true,opacity:.42}),water=mat(0x2f7fe0,0,.2,{transparent:true,opacity:.75}),cap=mat(0xf8c66b,.3,.4);
+const bottle=new THREE.Group(),bb=new THREE.Group();bb.rotation.z=-Math.PI/2;bottle.add(bb);
+bb.add(mesh(new THREE.CylinderGeometry(BR,BR,1.7,36),glass),mesh(new THREE.CylinderGeometry(BR*.9,BR*.9,1.2,36),water,0,-.15,0),mesh(new THREE.CylinderGeometry(.27,BR,.36,36),glass,0,1.03,0),mesh(new THREE.CylinderGeometry(.27,.27,.5,24),glass,0,1.46,0),mesh(new THREE.CylinderGeometry(.3,.3,.2,24),cap,0,1.8,0));
+bottle.position.set(-.1,BCY,BCZ);
+const bar=new THREE.Group(),rod=mesh(new THREE.CylinderGeometry(.1,.1,2.6,16),M.metal);rod.rotation.z=Math.PI/2;bar.add(rod);
+[-1.3,1.3].forEach(x=>bar.add(mesh(new THREE.SphereGeometry(.17,16,12),M.amber,x,0,0)));bar.position.set(0,hookC.y,hookC.z);
+const ball=mesh(new THREE.SphereGeometry(.17,24,18),M.amber);ball.position.copy(contact.pinch);
+const pen=mesh(new THREE.CylinderGeometry(.07,.07,2.6,16),M.amber);pen.rotation.set(rad(15),0,rad(78));pen.position.copy(contact.tripod);
+const objs={power:bottle,hook:bar,pinch:ball,tripod:pen};
+Object.values(objs).forEach(o=>{o.visible=false;o.userData.part='object';hand.add(o)});
+const GR=CFG.grip,held=objs[GR]||null;if(held)held.visible=true;
+const home=held?held.position.clone():null,homeR=held?held.rotation.clone():null;
+const target=P[GR]||P.open;
 let cur=(ST.pose||P.open).slice();apply(cur);
-if(CFG.grip==='pinch'){ball.visible=true;ball.position.copy(contact.pinch)}
-if(CFG.grip==='tripod'){pen.visible=true;pen.position.copy(contact.tripod)}
+hand.children.forEach(c=>{if(!c.userData.part)c.userData.part=c.position.y<-1.1?'wrist':(c.isGroup?'':'palm')});
+const arrows=[0,1,2,3,4].map(()=>{const a=new THREE.ArrowHelper(new V3(0,0,1),new V3(),.5,0xf8c66b,.16,.1);a.visible=false;scene.add(a);return a});
+function forces(amt){const pads=fingers.map(fPad);pads.push(tPad());const hp=hand.position;let use=[],aim=[];
+ if(GR==='power'||GR==='hook'){const cy=(GR==='power'?BCY:hookC.y)+hp.y,cz=GR==='power'?BCZ:hookC.z;use=[0,1,2,3,4];aim=pads.map(p=>new V3(p.x,cy,cz))}
+ else if(GR==='pinch'){use=[0,4];aim=[pads[4],pads[0]]}
+ else if(GR==='tripod'){const c=pads[0].clone().add(pads[1]).add(pads[4]).multiplyScalar(1/3);use=[0,1,4];aim=[c,c,c]}
+ const sf=.25+.9*CFG.strength/100;
+ arrows.forEach((a,i)=>{const k=use.indexOf(i);if(k<0||amt<.05){a.visible=false;return}
+  const d=aim[k].clone().sub(pads[i]);if(d.length()<1e-3){a.visible=false;return}d.normalize();const L=amt*sf;
+  a.visible=true;a.position.copy(pads[i]).addScaledVector(d,-L);a.setDirection(d);a.setLength(L,Math.min(.18,L*.5),.09)})}
+
+// --- HUD + design-review status
+const NEED={power:65,hook:62,pinch:62,tripod:55},NEEDP={power:0,hook:0,pinch:60,tripod:55};
+const okS=!held||CFG.strength>=NEED[GR],okP=!held||CFG.precision>=NEEDP[GR];
+if(held&&!(okS&&okP))held.position.y=home.y-.1;
+const $=id=>document.getElementById(id);
+$('hs').textContent=CFG.strength;$('hsb').style.width=CFG.strength+'%';$('hb').textContent=CFG.stability;$('hbb').style.width=CFG.stability+'%';
+$('hw').textContent=CFG.weight+' g';$('hc').textContent='$'+CFG.cost.toLocaleString()+' / $'+CFG.budget.toLocaleString();$('hc').style.color=CFG.within?'#79f0db':'#ff8f8f';
+$('st').textContent=!held?'\u25CB NO OBJECT':(okS&&okP?'\u25CF SECURE HOLD':(okS?'\u25B2 TOO IMPRECISE':'\u25B2 SLIP RISK'));
+$('st').style.color=!held?'#8fa6c2':(okS&&okP?'#5de0d0':'#f8c66b');
+if(!CFG.within)$('st').textContent+='  \u00B7 OVER BUDGET';
+
+// --- Run test: reach, close, lift, hold, release
+const toast=$('ts'),DUR=[1,1.2,1,1,1.2,1.2],TOT=DUR.reduce((a,b)=>a+b,0);let test=null,falling=false,vy=0;
+function showToast(t,good){toast.textContent=t;toast.style.display='block';toast.style.background=good?'#12322f':'#3a1a1f';toast.style.color=good?'#79f0db':'#ffb3b3';toast.style.border='1px solid '+(good?'#2a675f':'#7b3340')}
+function resetObj(){hand.add(held);held.position.copy(home);held.rotation.copy(homeR);if(!(okS&&okP))held.position.y=home.y-.1;falling=false;vy=0;hand.position.y=0}
+function stepTest(dt){const t=test;t.t+=dt;
+ if(t.t>=TOT){test=null;resetObj();setTimeout(()=>{if(!test)toast.style.display='none'},3000);return target}
+ let ph=0,acc=0;while(ph<5&&t.t>=acc+DUR[ph]){acc+=DUR[ph];ph++}
+ const u=Math.min(1,(t.t-acc)/DUR[ph]);
+ if(t.ph!==ph){t.ph=ph;
+  if(ph===2&&!(okS&&okP)){scene.attach(held);falling=true;vy=0;showToast(okS?'MISSED \u2014 precision '+CFG.precision+' < '+NEEDP[GR]+' needed':'DROPPED \u2014 grip force '+CFG.strength+' < '+NEED[GR]+' needed',false)}
+  if(ph===3&&okS&&okP)showToast('HELD \u2014 grip force '+CFG.strength+' (needs '+NEED[GR]+')',true);
+  if(ph===4&&held.parent===hand){scene.attach(held);falling=true;vy=0}}
+ const e=u*u*(3-2*u);hand.position.y=ph===2?.7*e:ph===3?.7:ph===4?.7*(1-e):0;
+ return(ph===0||ph>=4)?P.open:target}
+$('bt').onclick=()=>{if(!held){showToast('Choose a grip with an object (not Open) to run the test',false);setTimeout(()=>toast.style.display='none',2500);return}
+ if(test)return;toast.style.display='none';resetObj();test={t:0,ph:-1};C.spin=false;sync()};
 
 // --- Tendon routing (X-ray)
 const lines=fingers.map((f,i)=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(15),3));
  const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:DC}));l.frustumCulled=false;l.visible=false;scene.add(l);
  return {l,f,m:motors[Math.min(nm-1,Math.floor(i*nm/4))]}});
-function updLines(){lines.forEach(o=>{const f=o.f,r=f.d.r,a=o.l.geometry.attributes.position.array;
- const pts=[new V3(o.m.position.x,-.2,.1),f.mcp.localToWorld(new V3(0,0,r*1.12)),f.pip.localToWorld(new V3(0,0,r*1.05)),f.dip.localToWorld(new V3(0,0,r*.95)),f.dip.localToWorld(new V3(0,f.d.L[2]*.8,r*.95))];
- pts.forEach((p,i)=>{a[3*i]=p.x;a[3*i+1]=p.y;a[3*i+2]=p.z});o.l.geometry.attributes.position.needsUpdate=true})}
+const beads=lines.map(()=>{const s=mesh(new THREE.SphereGeometry(.055,10,8),M.amber);s.visible=false;scene.add(s);return s}),WHITE=new THREE.Color(1,1,1);
+function updLines(){lines.forEach((o,bi)=>{const f=o.f,r=f.d.r,a=o.l.geometry.attributes.position.array;
+ const pts=[new V3(o.m.position.x,-.2,.1).add(hand.position),f.mcp.localToWorld(new V3(0,0,r*1.12)),f.pip.localToWorld(new V3(0,0,r*1.05)),f.dip.localToWorld(new V3(0,0,r*.95)),f.dip.localToWorld(new V3(0,f.d.L[2]*.8,r*.95))];
+ pts.forEach((p,i)=>{a[3*i]=p.x;a[3*i+1]=p.y;a[3*i+2]=p.z});o.l.geometry.attributes.position.needsUpdate=true;const cu=Math.min(1,(f.mcp.rotation.x+f.pip.rotation.x+f.dip.rotation.x)/3.6);o.l.material.color.setHex(DC).lerp(WHITE,cu*.6);beads[bi].position.lerpVectors(pts[0],pts[1],.9-.7*cu)})}
 
 // --- Floor
-const grid=new THREE.GridHelper(14,28,0x5de0d0,0x24405c);grid.position.y=-3.3;grid.material.transparent=true;grid.material.opacity=.35;scene.add(grid);
+const grid=new THREE.GridHelper(14,28,CFG.within?0x5de0d0:0xff5b5b,CFG.within?0x24405c:0x5c2430);grid.position.y=-3.3;grid.material.transparent=true;grid.material.opacity=.35;scene.add(grid);
 
 // --- Camera orbit (custom: drag rotate, wheel zoom, right-drag pan)
 const C=ST.cam||{th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3,spin:true,xray:false};ST.cam=C;
@@ -341,16 +424,24 @@ const def={th:.6,ph:1.4,d:12.5,tx:0,ty:-.1,tz:.3};
 function cam(){const s=Math.sin(C.ph);camera.position.set(C.tx+C.d*s*Math.sin(C.th),C.ty+C.d*Math.cos(C.ph),C.tz+C.d*s*Math.cos(C.th));camera.lookAt(C.tx,C.ty,C.tz)}
 const el=renderer.domElement;let last=null,drag=false;
 el.addEventListener('contextmenu',e=>e.preventDefault());
-el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);last=[e.clientX,e.clientY];drag=true;C.spin=false;sync()});
-el.addEventListener('pointerup',e=>{drag=false});
+let down=null;const ray=new THREE.Raycaster(),mv2=new THREE.Vector2(),inf=$('inf');
+const JT={'Single hinge':'One rotation axis: simple, strong and easy to maintain, but the curl looks less natural.','Multi-link':'Coupled links shape a more natural curl path, at the cost of more parts to tune.','Compliant joint':'A flexible section absorbs impacts and misalignment, but positioning is less exact under load.'};
+const MT={'Tendon-driven':'Motor + spool: pulls a cable that curls a finger, like a tendon. Light fingers, but cables stretch and wear.','Direct-motor':'Geared motor driving a joint directly. Precise and independent, but heavier and costlier.','Underactuated':'Shared motor driving a linkage that curls several fingers together; they adapt around the object.'};
+const INF={palm:['Palm shell','Houses motors, battery and electronics. More hardware means more weight for the user.'],wrist:['Wrist & socket','Connects the hand to the limb. Weight and fit here decide daily comfort.'],pcb:['Control board & battery','Reads the command signal and sets motor power and speed.'],finger:['Finger segment','Silicone pads add friction for gripping. Segment length sets reach.'],thumb:['Thumb','Opposing the fingers is what makes pinch, tripod and power grips possible.'],
+ joint:['Joint: '+CFG.joint,JT[CFG.joint]],motor:['Actuator: '+CFG.drive,MT[CFG.drive]],object:['Test object',{power:'A bottle: a power grip wraps the fingers around it and force must beat its weight.',hook:'A handle bar: curled fingers carry a load without the thumb.',pinch:'A small part: pinching needs fine control more than force.',tripod:'A pen: thumb plus two fingers for stable, precise control.'}[GR]||'']};
+function pick(e){const r=el.getBoundingClientRect();mv2.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(mv2,camera);
+ const h=ray.intersectObjects(scene.children,true).filter(x=>x.object.type==='Mesh')[0];let k=null;
+ if(h){let o=h.object;while(o&&!k){k=o.userData.part||null;o=o.parent}}
+ if(k&&INF[k]){inf.style.display='block';inf.innerHTML='<b>'+INF[k][0]+'</b>'+INF[k][1]}else inf.style.display='none'}
+el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);last=[e.clientX,e.clientY];down=[e.clientX,e.clientY];drag=true;C.spin=false;sync()});
+el.addEventListener('pointerup',e=>{drag=false;if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<5)pick(e);down=null});
 el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];
  if(e.buttons&2||e.shiftKey){const k=C.d*.0016,rt=new V3().setFromMatrixColumn(camera.matrix,0),up=new V3().setFromMatrixColumn(camera.matrix,1);
   C.tx+=(-rt.x*dx+up.x*dy)*k;C.ty+=(-rt.y*dx+up.y*dy)*k;C.tz+=(-rt.z*dx+up.z*dy)*k}
  else{C.th-=dx*.009;C.ph=Math.max(.15,Math.min(Math.PI-.15,C.ph-dy*.009))}});
 el.addEventListener('wheel',e=>{e.preventDefault();C.d=Math.max(4,Math.min(20,C.d*Math.exp(e.deltaY*.0012)))},{passive:false});
-const $=id=>document.getElementById(id);
 function sync(){$('bs').classList.toggle('on',C.spin);$('bx').classList.toggle('on',C.xray);setX()}
-function setX(){const o=C.xray?.16:1;shellMats.forEach(m=>{m.transparent=C.xray;m.opacity=o;m.depthWrite=!C.xray;m.needsUpdate=true});lines.forEach(q=>q.l.visible=C.xray)}
+function setX(){const o=C.xray?.16:1;shellMats.forEach(m=>{m.transparent=C.xray;m.opacity=o;m.depthWrite=!C.xray;m.needsUpdate=true});lines.forEach(q=>q.l.visible=C.xray);beads.forEach(s=>s.visible=C.xray&&CFG.drive==='Tendon-driven')}
 $('bx').onclick=()=>{C.xray=!C.xray;sync()};$('bs').onclick=()=>{C.spin=!C.spin;sync()};
 $('bz').onclick=()=>C.d=Math.max(4,C.d*.85);$('bo').onclick=()=>C.d=Math.min(20,C.d*1.18);
 $('br').onclick=()=>{Object.assign(C,def);C.spin=true;sync()};sync();
@@ -363,8 +454,18 @@ function place(t,p,dx,dy,w,h){const v=p.clone().project(camera);t.style.transfor
 
 function resize(){const w=root.clientWidth,h=root.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
 new ResizeObserver(resize).observe(root);resize();
-(function loop(){requestAnimationFrame(loop);
- for(let i=0;i<17;i++)cur[i]+=(target[i]-cur[i])*.12;apply(cur);ST.pose=cur.slice();
+const clock=new THREE.Clock();
+(function loop(){requestAnimationFrame(loop);const dt=Math.min(.05,clock.getDelta());
+ const tgt=test?stepTest(dt):target,kk=1-Math.exp(-dt*(1.5+CFG.resp*1.1));let mvd=0,gd=0;
+ for(let i=0;i<17;i++){const dl=tgt[i]-cur[i];mvd+=Math.abs(dl);cur[i]+=dl*kk;gd+=Math.abs(target[i]-cur[i])}
+ apply(cur);ST.pose=cur.slice();hand.updateMatrixWorld(true);
+ const amt=held?Math.max(0,1-gd/120):0,act=Math.min(1,mvd/30)+(amt>.6?.2:0);
+ const om=act*(1.5+CFG.power*1.1);motors.forEach((g,i)=>{g.rotation.y+=om*dt*(i%2?-1:1)});
+ M.drive.emissiveIntensity=.1+act*(.25+CFG.power*.07);
+ gearJ.forEach(ge=>{ge.rotation.y=-2.5*ge.parent.parent.parent.rotation.x});
+ if(wt){const c=i=>cur[3*i]+cur[3*i+1]+cur[3*i+2];wt.m.rotation.z=((c(0)+c(1))-(c(2)+c(3)))*.0018;wt.a.rotation.z=(c(0)-c(1))*.0035;wt.b.rotation.z=(c(2)-c(3))*.0035}
+ if(falling){vy-=20*dt;held.position.y+=vy*dt;if(held.position.y<-2.9){held.position.y=-2.9;vy*=-.25;if(Math.abs(vy)<.5)falling=false}}
+ if(held)forces(amt);
  if(C.spin&&!drag)C.th+=.004;cam();camera.updateMatrixWorld();
  if(C.xray)updLines();
  const w=root.clientWidth,h=root.clientHeight;
@@ -375,10 +476,13 @@ new ResizeObserver(resize).observe(root);resize();
 </script></body></html>"""
 
 
-def build_hand_3d(grip_pattern: str, drive_name: str, joint_name: str, power: int) -> str:
+def build_hand_3d(grip_pattern: str, drive_name: str, joint_name: str, power: int, extra: dict | None = None) -> str:
     """Interactive Three.js prosthetic hand: drag to orbit, scroll to zoom, X-ray to see internals."""
     motors = {"Tendon-driven": 4, "Direct-motor": 5, "Underactuated": 2}.get(drive_name, 4)
-    cfg = {"grip": grip_pattern, "drive": drive_name, "joint": joint_name, "power": power, "motors": motors}
+    weight = 190 + motors * 42 + power * 7 + {"Multi-link": 35, "Compliant joint": 12}.get(joint_name, 0)
+    cfg = {"grip": grip_pattern, "drive": drive_name, "joint": joint_name, "power": power, "motors": motors, "weight": weight,
+           "strength": 70, "precision": 70, "stability": 70, "resp": 6, "cost": 0, "budget": 0, "within": True}
+    cfg.update(extra or {})
     return HAND3D_HTML.replace("__CFG__", json.dumps(cfg))
 
 
@@ -433,8 +537,14 @@ with tab_build:
         st.markdown('<div class="section-kicker">LIVE CONCEPT VIEW</div>', unsafe_allow_html=True)
         st.markdown(f"### {grip}")
         st.markdown(f"<span class='status-pill'>● SIMULATION UPDATED</span> &nbsp; <span class='soft-pill'>{drive}</span> &nbsp; <span class='soft-pill'>{joint}</span>", unsafe_allow_html=True)
-        components.html(build_hand_3d(g["pattern"], drive, joint, motor_power), height=620, scrolling=False)
-        st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']} &nbsp;<span class='tiny-note'>Tip: press X-ray to see motors, electronics and tendon routing.</span></div>", unsafe_allow_html=True)
+        components.html(
+            build_hand_3d(g["pattern"], drive, joint, motor_power, {
+                "strength": strength, "precision": precision, "stability": stability, "resp": response_speed,
+                "cost": cost_estimate, "budget": budget, "within": within_budget,
+            }),
+            height=620, scrolling=False,
+        )
+        st.markdown(f"<div class='callout'><b style='color:#eef4ff'>Task focus:</b> {g['use']} &nbsp;<span class='tiny-note'>Try: Run test, X-ray, and click any part of the hand.</span></div>", unsafe_allow_html=True)
         st.markdown(f"<div class='tiny-note'>{d['summary']}</div>", unsafe_allow_html=True)
 
     with right:
